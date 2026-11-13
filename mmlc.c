@@ -957,6 +957,14 @@ static char *bin_files[32];
 static int nbins;
 static char mml_dir[512];
 
+/* MML 側から指定するサンプル(BRR等)と DSP 初期値 */
+typedef struct { char *file; long addr; } Sample;
+static Sample samples[64];
+static int nsamples;
+typedef struct { int reg; int val; } DspSet;
+static DspSet dspsets[128];
+static int ndspsets;
+
 static void replace_ch(char *dst, size_t n, const char *src, int ch)
 {
     size_t o = 0;
@@ -1062,7 +1070,6 @@ static void build_song(void)
 /* SPC image                                                           */
 /* ------------------------------------------------------------------ */
 static uint8_t ram[RAMSZ], dsp[128], xram[64], hdr[0x100];
-static int have_base;
 
 static void set_text(int off, int n, const char *s)
 {
@@ -1072,24 +1079,8 @@ static void set_text(int off, int n, const char *s)
 
 static void init_spc(void)
 {
-    const char *s;
     int i;
-    s = cfg_get("spc", "base_spc");
-    if (s) {
-        char path[1024], *q = xstrdup(s), *d;
-        long n;
-        unquote(q);
-        join_path(path, sizeof path, drv_dir, q);
-        d = read_file(path, &n);
-        if (n < SPCSZ - 0x40 || memcmp(d, "SNES-SPC700", 11)) die("'%s' is not a valid .spc", path);
-        memcpy(hdr, d, 0x100);
-        memcpy(ram, d + 0x100, RAMSZ);
-        memcpy(dsp, d + 0x10100, 128);
-        if (n >= SPCSZ) memcpy(xram, d + 0x101C0, 64);
-        free(d);
-        free(q);
-        have_base = 1;
-    } else {
+    {
         time_t now = time(NULL);
         char date[16];
         memset(hdr, 0, sizeof hdr);
@@ -1162,7 +1153,7 @@ static void init_spc(void)
             long v = parse_number(pc);
             hdr[0x25] = v & 0xFF;
             hdr[0x26] = (v >> 8) & 0xFF;
-        } else if (!have_base) die("[spc] pc is required when base_spc is not used");
+        } else die("[spc] pc is required");
         for (k = 0; k < sizeof regs / sizeof regs[0]; k++) {
             const char *v = cfg_get("spc", regs[k].k);
             if (v) hdr[regs[k].off] = (uint8_t)parse_number(v);
@@ -1173,6 +1164,20 @@ static void init_spc(void)
 static void apply_song_and_patches(void)
 {
     int i;
+    for (i = 0; i < nsamples; i++) {
+        char path[1024];
+        long n;
+        char *d;
+        snprintf(g_where, sizeof g_where, "#sample '%s'", samples[i].file);
+        join_path(path, sizeof path, mml_dir, samples[i].file);
+        d = read_file(path, &n);
+        if (samples[i].addr < 0 || samples[i].addr + n > RAMSZ)
+            die("'%s' does not fit in RAM at $%04lX", path, samples[i].addr);
+        memcpy(ram + samples[i].addr, d, n);
+        free(d);
+        g_where[0] = 0;
+    }
+    for (i = 0; i < ndspsets; i++) dsp[dspsets[i].reg] = (uint8_t)dspsets[i].val;
     if (D.base + song_len > RAMSZ) die("song overflows RAM");
     memcpy(ram + D.base, song, song_len);
     for (i = 0; i < nents; i++) {
@@ -1258,6 +1263,30 @@ static void tag_directive(const char *name, char *arg)
     else if (!strcmp(name, "bin")) {
         if (nbins >= 32) die("too many #bin");
         bin_files[nbins++] = xstrdup(arg);
+    } else if (!strcmp(name, "sample")) {
+        /* #sample "file.brr" 0x4000 */
+        char *a = strrchr(arg, ' ');
+        if (!a) a = strrchr(arg, '\t');
+        if (!a) die("#sample \"file\" <addr>");
+        *a++ = 0;
+        if (nsamples >= 64) die("too many #sample");
+        samples[nsamples].addr = parse_number(a);
+        arg = trim(arg);
+        unquote(arg);
+        samples[nsamples++].file = xstrdup(arg);
+    } else if (!strcmp(name, "dsp")) {
+        /* #dsp <reg> <val> */
+        char *a = arg;
+        long r, v;
+        while (*a && !isspace((unsigned char)*a)) a++;
+        if (!*a) die("#dsp <reg> <val>");
+        *a++ = 0;
+        r = parse_number(arg);
+        v = parse_number(trim(a));
+        if (r < 0 || r > 127) die("DSP register out of range");
+        if (ndspsets >= 128) die("too many #dsp");
+        dspsets[ndspsets].reg = (int)r;
+        dspsets[ndspsets++].val = (int)v;
     } else if (!strcmp(name, "driver")) {
         /* handled in pre-scan */
     } else die("unknown directive '#%s'", name);
