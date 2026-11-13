@@ -1,0 +1,15 @@
+#driver "../mmldrv.drv"
+#title "mmldrv demo"
+#artist "mmlc"
+#sample "dir.bin"  0x1F00
+#sample "sine.brr" 0x4000
+
+; A: メロディ
+A t120 @0 v100 p64 o4 l8
+A [c d e f g4 e4 c4 r4]2
+A L c4 e4 g4 >c4< r2
+
+; B: ベース(左寄り)
+B @0 v90 p20 o2 l4
+B [c g c g]2
+B L [c g e g]2
