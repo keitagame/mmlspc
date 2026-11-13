@@ -1,0 +1,66 @@
+; mmldrv.drv — mmldrv.asm 用ドライバ定義
+;
+; メモリマップ
+;   $0200-$03FF  ドライバ本体 (mmldrv.bin)
+;   $1F00-$1FFF  サンプルディレクトリ (MML の #sample で配置)
+;   $2000-$3FFF  曲データ
+;   $4000-       サンプル本体 (BRR) (MML の #sample で配置)
+;
+; サンプルは「ピッチ値 $1000 で o4c(261.6Hz) になるよう」作っておく。
+; 音色番号 @n はディレクトリのエントリ番号 (SRCN)。
+
+[spc]
+load = mmldrv.bin 0x0200
+pc   = 0x0200
+sp   = 0xEF
+dsp  = 0x5D 0x1F          ; DIR = $1F00
+
+dsp  = 0x05 0xFF          ; voice0 ADSR1 (AR=15 DR=7)
+dsp  = 0x06 0xE0          ; voice0 ADSR2 (SL=7 SR=0)
+dsp  = 0x15 0xFF          ; voice1 ADSR1 (AR=15 DR=7)
+dsp  = 0x16 0xE0          ; voice1 ADSR2 (SL=7 SR=0)
+dsp  = 0x25 0xFF          ; voice2 ADSR1 (AR=15 DR=7)
+dsp  = 0x26 0xE0          ; voice2 ADSR2 (SL=7 SR=0)
+dsp  = 0x35 0xFF          ; voice3 ADSR1 (AR=15 DR=7)
+dsp  = 0x36 0xE0          ; voice3 ADSR2 (SL=7 SR=0)
+dsp  = 0x45 0xFF          ; voice4 ADSR1 (AR=15 DR=7)
+dsp  = 0x46 0xE0          ; voice4 ADSR2 (SL=7 SR=0)
+dsp  = 0x55 0xFF          ; voice5 ADSR1 (AR=15 DR=7)
+dsp  = 0x56 0xE0          ; voice5 ADSR2 (SL=7 SR=0)
+dsp  = 0x65 0xFF          ; voice6 ADSR1 (AR=15 DR=7)
+dsp  = 0x66 0xE0          ; voice6 ADSR2 (SL=7 SR=0)
+dsp  = 0x75 0xFF          ; voice7 ADSR1 (AR=15 DR=7)
+dsp  = 0x76 0xE0          ; voice7 ADSR2 (SL=7 SR=0)
+
+[song]
+base       = 0x2000
+limit      = 0x3FFF
+channels   = 8
+unused_ptr = 0
+
+[notes]
+tpq         = 48
+octave_base = 0           ; $pitch = o*12 + 半音 (o4c = 48)
+octave_default = 4
+pitch_min   = 0
+pitch_max   = 71          ; o5b まで
+len_min     = 1
+len_max     = 255
+loop_mode   = expand
+
+[commands]
+note         = $pitch $len
+rest         = 0xC9 $len
+tie          = 0xC8 $len
+tempo        = 0x82 (10000/$1)       ; BPM -> タイマー0分周値 (40..255 BPM)
+instrument   = 0x83 $1
+volume       = 0x84 $1               ; 0-127
+pan          = 0x85 $1               ; 0-127 (64=中央)
+gate         = 0x86 $1               ; 末尾 n tick を離鍵 (0=レガート)
+loop_point   =
+loop_forever = 0x81 @loop_point:w
+track_end    = 0x80
+
+[layout]
+foreach_track data @track_$ch:w
+tracks
